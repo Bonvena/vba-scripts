@@ -1,0 +1,1348 @@
+Option Explicit
+Sub CTEA_2P1_3P1_Calculation()
+
+'Calculates the overall and program-by-program 2p1 and 3p1 metrics for the CLNA.
+Dim LastRow, LastColumn, LastRow2p1, LastColumn2p1, LastRow3p1, LastColumn3p1, LastRow7b_enrollment, LastColumn7b_enrollment, LastRow7b_completion, LastColumn7b_completion As Long
+Dim i, sp, numerator, denominator, num_total, denom_total, num_NTG_total, denom_NTG_total, enrollment, enrollment_total, completion, completion_total As Long
+Dim rw, index, response, genderColumn, yrend_statColumn, programColumn, cipColumn As Long
+Dim welcome, timeColumn, concentratorMin, firstSP, lastSP, ctea_type, completer, completer_notenrolled, other_notenrolled As Long
+Dim lookupArray As Range
+Dim result, target_2p1, target_3p1, overall_total, overall_NTG_total As Double
+Dim uniqueProgramArray As Variant
+Dim FirstSheet, Sheet2p1, Sheet3p1, Sheet7bEnrollment, Sheet7bCompletion, sFile, nontrad_male, nontrad_female As String
+Dim inputQuestionCLNA_Type, inputQuestion_2p1, inputQuestion_3p1, fileTypes As String
+Dim original_wb, crosswalk_wb As Workbook
+Dim original_sht, crosswalk_sht, target2p1_ws, target3p1_ws, target_7bEnrollment_ws, target_7bCompletion_ws As Worksheet
+
+Set original_wb = ActiveWorkbook
+FirstSheet = ActiveSheet.Name
+Set original_sht = ActiveSheet
+
+'asks users to select nontraditional crosswalk
+welcome = MsgBox(prompt:="This script will provide 2p1 and 3p1 metrics per program and special population for the CLNA." _
+            & vbCrLf & vbCrLf & "It is intended to work on the CTEA files formatted for the IDEx system." _
+            & vbCrLf & "The CTEA file should be the only Excel workbook open." _
+            & " You should also have saved the 2020 Nontraditional Crosswalk where it can be located. " _
+            & " As this file will be modified, you may wish to save a copy first before continuing. Otherwise, click OK" _
+            , Title:="CTEA CLNA Calculation", Buttons:=vbOKCancel)
+
+If welcome = vbCancel Then
+    Exit Sub
+End If
+
+'asks if data is for CTEA 1 or 2
+inputQuestionCLNA_Type = "Enter 1 if data file is for CTEA 1 (credit bearing courses) or 2 for" _
+                        & " CTEA 2 (non-credit bearing courses) (Default is 1)."
+                        
+    'loop for incorrect number
+    Do
+    
+        ctea_type = Application.InputBox(inputQuestionCLNA_Type, "CTEA Type", 1, , , , , 1)
+        
+        If ctea_type = False Then
+            Exit Sub
+        End If
+    
+    Loop While (ctea_type >= 3) Or (ctea_type <= 0)
+
+If ctea_type = 1 Then
+
+    programColumn = 3 'Column of IRP Code
+    cipColumn = 4 'Column of CIP Code
+    timeColumn = 17 'Column of Credits Earned
+    concentratorMin = 12 'Min number of credits to be considered a concentrator
+    firstSP = 8 'Column of first special population to be analyzed
+    lastSP = 16 ' Column of last special population (assumes all special populations are between firstSP and lastSP)
+    genderColumn = 5 'Column of Gender
+    yrend_statColumn = 18 ' Column of YRENDSTAT_ID
+    completer_notenrolled = 6 'Received certificate/degree -- not enrolled during academic year
+    completer = 4 'Completer, enrolled during academic year
+    other_notenrolled = 5 'Other/Not Enrolled
+
+Else
+
+    programColumn = 4 'Column of Program Code
+    cipColumn = 5 'Column of CIP Code
+    timeColumn = 18 'Column of Contact Hours
+    concentratorMin = 100 'Min number of contact hours to be considered a concentrator
+    firstSP = 9 'Column of first special population to be analyzed
+    lastSP = 17 ' Column of last special population (assumes all special populations are between firstSP and lastSP)
+    genderColumn = 6 'Column of Gender
+    yrend_statColumn = 19 ' Column of YRENDSTAT_ID
+    completer_notenrolled = 1 ''Received certificate/degree -- not enrolled during academic year
+    completer = 3 'Completer, enrolled during academic year
+    other_notenrolled = 4 'Other/Not Enrolled
+
+End If
+
+'asks for Target 2p1 Rate
+inputQuestion_2p1 = "Enter Target 2p1 Rate in number form without % (e.g. 50.45, not 50.45%)."
+       
+    'loops for incorrect percentage
+    Do
+    
+        target_2p1 = Application.InputBox(inputQuestion_2p1, "Target 2p1 Rate", 21#, , , , , 1)
+    
+    Loop While (target_2p1 >= 100) Or (target_2p1 < 0)
+
+If target_2p1 = False Then
+    Exit Sub
+Else
+    target_2p1 = target_2p1 / 100
+End If
+
+'ask for Target 3p1 rate
+inputQuestion_3p1 = "Enter Target 3p1 Rate in number form (e.g. 50.45, not 50.45%)."
+       
+    'loops for incorrect percentage
+    Do
+    
+        target_3p1 = Application.InputBox(inputQuestion_3p1, "Target 3p1 Rate", 17#, , , , , 1)
+    
+    Loop While (target_3p1 >= 100) Or (target_3p1 < 0)
+
+If target_3p1 = False Then
+    Exit Sub
+Else
+    target_3p1 = target_3p1 / 100
+End If
+
+'finds last row and column
+LastRow = Worksheets(FirstSheet).Cells.Find("*", SearchOrder:=xlByRows, SearchDirection:=xlPrevious).Row
+LastColumn = Worksheets(FirstSheet).Cells(1, Columns.Count).End(xlToLeft).Column
+
+'changes format of all cells from the Gender field onward to General
+Range(Cells(1, genderColumn), Cells(LastRow, LastColumn)).Select
+With Selection
+    .NumberFormat = "General"
+    .Value = .Value
+End With
+
+Range("A1").Select
+Application.CutCopyMode = False
+
+'asks users to select nontraditional crosswalk
+response = MsgBox(prompt:="Press OK to select the file containing the nontraditional crosswalk." & _
+            vbCrLf & "CIP Codes should be in first column, nontraditional statuses in columns 4 and 5." _
+            & vbCrLf & "If you do not have this, press Cancel to Exit.", Title:="CTEA CLNA Calculation", Buttons:=vbOKCancel)
+
+If response = vbCancel Then
+    Exit Sub
+End If
+
+fileTypes = "Excel Files (*.xls*) , *.xls*," & _
+            "Text Files (*.txt; *.csv) , *.txt"
+
+sFile = Application.GetOpenFilename(FileFilter:=fileTypes, Title:="Select nontraditional crosswalk file")
+
+Application.ScreenUpdating = False
+
+'lookups nontraditional female and male info and returns it to original file as new columns
+Set crosswalk_wb = Workbooks.Open(sFile)
+Set lookupArray = crosswalk_wb.Worksheets(1).Range(Cells(1, 1), Cells(Cells(Rows.Count, 1).End(xlUp).Row, 5))
+
+With original_wb.Worksheets(FirstSheet)
+
+    For rw = 2 To LastRow
+        .Cells(rw, LastColumn + 1) = Trim(WorksheetFunction.IfError(Application.VLookup(.Cells(rw, cipColumn).Value2 & "", lookupArray, 4, False), "N/A"))
+        .Cells(rw, LastColumn + 2) = Trim(WorksheetFunction.IfError(Application.VLookup(.Cells(rw, cipColumn).Value2 & "", lookupArray, 5, False), "N/A"))
+    Next rw
+
+End With
+
+crosswalk_wb.Close savechanges:=False
+
+Worksheets(FirstSheet).Activate
+
+Cells(1, LastColumn + 1).Value = "Nontraditional for females"
+Columns(LastColumn + 1).ColumnWidth = 30
+Cells(1, LastColumn + 2).Value = "Nontraditional for males"
+Columns(LastColumn + 2).ColumnWidth = 30
+
+Worksheets(FirstSheet).Range(Worksheets(FirstSheet).Cells(2, LastColumn + 1), Worksheets(FirstSheet).Cells(LastRow, LastColumn + 2)).Replace 0, "N"
+
+'finished with nontraditional lookup
+'creates a worksheet called "Ignore" and adds it to the end
+Dim Ws As Worksheet
+Set Ws = ActiveWorkbook.Sheets.Add(After:=ActiveWorkbook.Sheets(ActiveWorkbook.Sheets.Count))
+
+Ws.Name = "Ignore"
+
+'uses AutoFilter to take unique IRP codes and copy to Ignore sheet. Sorts and then adds to array
+Worksheets(FirstSheet).Range(Worksheets(FirstSheet).Cells(1, programColumn), Worksheets(FirstSheet).Cells(LastRow, programColumn)).AdvancedFilter Action:=xlFilterCopy, CopyToRange:=Sheets("Ignore").Range("A1"), Unique:=True
+LastRow = Ws.Cells(Ws.Rows.Count, "A").End(xlUp).Row
+
+'clear the sorted field and apply AutoFilter
+Ws.Range("A1:A" & LastRow).Select
+Ws.Range("A1:A" & LastRow).AutoFilter
+Ws.AutoFilter.Sort.SortFields.Clear
+
+Ws.AutoFilter.Sort.SortFields.Add Order:=xlAscending, _
+    SortOn:=xlSortOnValues, Key:=Range("A1:A" & LastRow)
+
+Ws.AutoFilter.Sort.Apply
+
+'create array of unique IRP codes
+uniqueProgramArray = Application.Transpose(Ws.Range("A2:A" & LastRow))
+
+'turn off AutoFilter
+ActiveSheet.AutoFilterMode = False
+
+'delete Ignore Worksheet
+Application.DisplayAlerts = False
+Worksheets("Ignore").Delete
+Application.DisplayAlerts = True
+
+LastRow = Worksheets(FirstSheet).Cells.Find("*", SearchOrder:=xlByRows, SearchDirection:=xlPrevious).Row
+
+'***2P1 TABLE START***
+'Create table for 2p1 and adjust column widths
+Set target2p1_ws = original_wb.Worksheets.Add(Type:=xlWorksheet, After:=Application.ActiveSheet)
+target2p1_ws.Name = "2p1"
+Sheet2p1 = target2p1_ws.Name
+
+With Worksheets(Sheet2p1)
+
+    .Cells(1, 1).Value = "CIP Code"
+    .Columns(1).ColumnWidth = 15
+    .Cells(1, 2).Value = "Program/IRP Code"
+    .Columns(2).ColumnWidth = 20
+    .Cells(1, 3).Value = "Overall"
+    .Columns(3).ColumnWidth = 40
+    
+End With
+
+LastColumn2p1 = target2p1_ws.Cells(1, Columns.Count).End(xlToLeft).Column
+
+'adds headers to Sheet2p1
+i = 1
+For sp = firstSP To lastSP
+    Worksheets(Sheet2p1).Cells(1, LastColumn2p1 + i).Value2 = Worksheets(FirstSheet).Cells(1, sp).Value2
+    Worksheets(Sheet2p1).Columns(LastColumn2p1 + i).ColumnWidth = 5 + Len(Worksheets(FirstSheet).Cells(1, sp).Value2)
+    i = i + 1
+Next sp
+
+'calculation of overall 2p1 for each program
+num_total = 0
+denom_total = 0
+For i = LBound(uniqueProgramArray) To UBound(uniqueProgramArray)
+    
+    Worksheets(Sheet2p1).Cells(i + 1, 2).Value2 = uniqueProgramArray(i)
+    
+    With Worksheets(FirstSheet)
+       
+       'numerator consists of ALL COMPLETERS in the program (during and not during AY)
+        numerator = WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer_notenrolled, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i)) + _
+                    WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i))
+        
+        'denominator consists of ALL COMPLETERS in the program OR THOSE WHO DROPPED OUT (Other/Not Enrolled)
+        denominator = WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer_notenrolled, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i)) + _
+                    WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i)) + _
+                    WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), other_notenrolled, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i))
+
+    End With
+    
+    'adds this to global variables for overall total calculation later on
+    num_total = num_total + numerator
+    denom_total = denom_total + denominator
+    
+    'checks divide by zero error and formats result
+    If denominator = 0 Then
+        Worksheets(Sheet2p1).Cells(i + 1, LastColumn2p1).Value = "N/A (no cases)"
+    Else
+        result = numerator / denominator
+
+        If result >= target_2p1 Then
+            Worksheets(Sheet2p1).Cells(i + 1, LastColumn2p1).Value = FormatPercent(result, 2) & " (" & numerator & "/" & denominator & ")" & " (Above Target of " & Format(target_2p1, "0.00%") & ")"
+            Worksheets(Sheet2p1).Cells(i + 1, LastColumn2p1).Font.Color = RGB(0, 110, 0)
+        Else
+            Worksheets(Sheet2p1).Cells(i + 1, LastColumn2p1).Value = FormatPercent(result, 2) & " (" & numerator & "/" & denominator & ")" & " (Below Target of " & Format(target_2p1, "0.00%") & ")"
+            Worksheets(Sheet2p1).Cells(i + 1, LastColumn2p1).Font.Color = RGB(230, 0, 0)
+        End If
+
+    End If
+
+Next
+
+'calculation of 2p1 for each program's special population
+For i = LBound(uniqueProgramArray) To UBound(uniqueProgramArray)
+    
+    index = 1
+    For sp = firstSP To lastSP
+
+        With Worksheets(FirstSheet)
+            
+            'numerator consists of ALL COMPLETERS in the program IN THE S.P. (during and not during AY)
+            numerator = WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer_notenrolled, _
+                        .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                        .Range(.Cells(2, sp), .Cells(LastRow, sp)), 1) + _
+                        WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer, _
+                        .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                        .Range(.Cells(2, sp), .Cells(LastRow, sp)), 1)
+            
+            'denominator consists of ALL COMPLETERS in the program IN THE S.P. OR THOSE WHO DROPPED OUT (Other/Not Enrolled)
+            denominator = WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer_notenrolled, _
+                        .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                        .Range(.Cells(2, sp), .Cells(LastRow, sp)), 1) + _
+                        WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer, _
+                        .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                        .Range(.Cells(2, sp), .Cells(LastRow, sp)), 1) + _
+                        WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), other_notenrolled, _
+                        .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                        .Range(.Cells(2, sp), .Cells(LastRow, sp)), 1)
+    
+        End With
+        
+        'checks divide by zero error and formats result
+        If denominator = 0 Then
+            Worksheets(Sheet2p1).Cells(i + 1, LastColumn2p1 + index).Value = "N/A (no cases)"
+        Else
+            result = numerator / denominator
+    
+            If result >= target_2p1 Then
+                Worksheets(Sheet2p1).Cells(i + 1, LastColumn2p1 + index).Value = FormatPercent(result, 2) & " (" & numerator & "/" & denominator & ")" & " (Above Target of " & Format(target_2p1, "0.00%") & ")"
+                Worksheets(Sheet2p1).Cells(i + 1, LastColumn2p1 + index).Font.Color = RGB(0, 110, 0)
+            Else
+                Worksheets(Sheet2p1).Cells(i + 1, LastColumn2p1 + index).Value = FormatPercent(result, 2) & " (" & numerator & "/" & denominator & ")" & " (Below Target of " & Format(target_2p1, "0.00%") & ")"
+                Worksheets(Sheet2p1).Cells(i + 1, LastColumn2p1 + index).Font.Color = RGB(230, 0, 0)
+            End If
+    
+        End If
+    
+        index = index + 1
+        
+    Next sp
+
+Next i
+
+'adds CIP code to new table
+For i = LBound(uniqueProgramArray) To UBound(uniqueProgramArray)
+    
+    With Worksheets(FirstSheet)
+    
+        Worksheets(Sheet2p1).Cells(i + 1, 1).Value2 = WorksheetFunction.index(.Range(.Cells(2, cipColumn), .Cells(LastRow, cipColumn)), _
+        WorksheetFunction.Match(uniqueProgramArray(i), .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), 0))
+    
+    End With
+
+Next i
+
+LastColumn2p1 = target2p1_ws.Cells(1, Columns.Count).End(xlToLeft).Column
+LastRow2p1 = target2p1_ws.Cells.Find("*", SearchOrder:=xlByRows, SearchDirection:=xlPrevious).Row
+
+'calculates 2p1 rate for each program for nontraditional gender, which is not a S.P. column in the file.
+num_NTG_total = 0
+denom_NTG_total = 0
+For i = LBound(uniqueProgramArray) To UBound(uniqueProgramArray)
+    
+    With Worksheets(FirstSheet)
+        
+        'looks up the nontraditional gender for the program
+        nontrad_female = WorksheetFunction.IfError(WorksheetFunction.index(.Range(.Cells(2, LastColumn + 1), .Cells(LastRow, LastColumn + 1)), _
+                        WorksheetFunction.Match(uniqueProgramArray(i), .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), 0)), "")
+        
+        nontrad_male = WorksheetFunction.IfError(WorksheetFunction.index(.Range(.Cells(2, LastColumn + 2), .Cells(LastRow, LastColumn + 2)), _
+                        WorksheetFunction.Match(uniqueProgramArray(i), .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), 0)), "")
+        
+        'if the nontrad. gender is female, counts only female and non-binary and unknown COMPLETERS
+        If nontrad_female = "Y" Then
+        
+            'numerator consists of female/non-binary/unknown COMPLETERS in the program (during and not during AY)
+            numerator = WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer_notenrolled, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 2) + _
+                    WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer_notenrolled, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 3) + _
+                    WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer_notenrolled, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 4) + _
+                    WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 2) + _
+                    WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 3) + _
+                    WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 4)
+
+            'denominator consists of ALL COMPLETERS in the program OR THOSE WHO DROPPED OUT (Other/Not Enrolled)
+            denominator = WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer_notenrolled, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i)) + _
+                    WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i)) + _
+                    WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), other_notenrolled, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i))
+        
+            'adds this to global variables for overall total nontrad. calculation later on
+            num_NTG_total = num_NTG_total + numerator
+            denom_NTG_total = denom_NTG_total + denominator
+        
+        'if the nontrad. gender is male, counts only male and non-binary and unknown COMPLETERS
+        ElseIf nontrad_male = "Y" Then
+            
+            'numerator consists of male/non-binary/unknown COMPLETERS in the program (during and not during AY)
+            numerator = WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer_notenrolled, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 1) + _
+                    WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 1) + _
+                    WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer_notenrolled, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 3) + _
+                    WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 3) + _
+                    WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer_notenrolled, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 4) + _
+                    WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 4)
+            
+            'denominator consists of ALL COMPLETERS in the program OR THOSE WHO DROPPED OUT (Other/Not Enrolled)
+            denominator = WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer_notenrolled, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i)) + _
+                    WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i)) + _
+                    WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), other_notenrolled, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i))
+            
+            'adds this to global variables for overall total nontrad. calculation later on
+            num_NTG_total = num_NTG_total + numerator
+            denom_NTG_total = denom_NTG_total + denominator
+            
+        'otherwise there is no nontraditional gender for program based on CIP code
+        Else: denominator = -1
+        
+        End If
+            
+    End With
+    
+    'checks for divide by zero error and no nontraditional gender. Otherwise formats result
+    If denominator = 0 Then
+        Worksheets(Sheet2p1).Cells(i + 1, LastColumn2p1 + 1).Value = "N/A (no cases)"
+    ElseIf denominator = -1 Then
+        Worksheets(Sheet2p1).Cells(i + 1, LastColumn2p1 + 1).Value = "N/A (no nontraditional gender)"
+    Else
+        result = numerator / denominator
+
+        If result >= target_2p1 Then
+            Worksheets(Sheet2p1).Cells(i + 1, LastColumn2p1 + 1).Value = FormatPercent(result, 2) & " (" & numerator & "/" & Format(denominator, "#,###") & ")" & " (Above Target of " & Format(target_2p1, "0.00%") & ")"
+            Worksheets(Sheet2p1).Cells(i + 1, LastColumn2p1 + 1).Font.Color = RGB(0, 110, 0)
+        Else
+            Worksheets(Sheet2p1).Cells(i + 1, LastColumn2p1 + 1).Value = FormatPercent(result, 2) & " (" & numerator & "/" & Format(denominator, "#,###") & ")" & " (Below Target of " & Format(target_2p1, "0.00%") & ")"
+            Worksheets(Sheet2p1).Cells(i + 1, LastColumn2p1 + 1).Font.Color = RGB(230, 0, 0)
+        End If
+
+    End If
+    
+Next i
+
+Worksheets(Sheet2p1).Cells(1, LastColumn2p1 + 1).Value = "Nontraditional in this field"
+Worksheets(Sheet2p1).Cells(1, LastColumn2p1 + 1).ColumnWidth = 75
+
+LastColumn2p1 = target2p1_ws.Cells(1, Columns.Count).End(xlToLeft).Column
+
+'calculation of overall 2p1 for college (does not remove duplicates)
+'checks divide by zero error and formats result
+If denom_total = 0 Then
+    Worksheets(Sheet2p1).Cells(LastRow2p1 + 1, 3).Value = "N/A (no cases)"
+Else
+    overall_total = num_total / denom_total
+
+    If overall_total >= target_2p1 Then
+        Worksheets(Sheet2p1).Cells(LastRow2p1 + 1, 3).Value = FormatPercent(overall_total, 2) & " (" & num_total & "/" & Format(denom_total, "#,###") & ")" & " (Above Target of " & Format(target_2p1, "0.00%") & ")"
+        Worksheets(Sheet2p1).Cells(LastRow2p1 + 1, 3).Font.Color = RGB(0, 110, 0)
+    Else
+        Worksheets(Sheet2p1).Cells(LastRow2p1 + 1, 3).Value = FormatPercent(overall_total, 2) & " (" & num_total & "/" & Format(denom_total, "#,###") & ")" & " (Below Target of " & Format(target_2p1, "0.00%") & ")"
+        Worksheets(Sheet2p1).Cells(LastRow2p1 + 1, 3).Font.Color = RGB(230, 0, 0)
+    End If
+
+End If
+
+Worksheets(Sheet2p1).Cells(LastRow2p1 + 1, 1).Value = "Overall (does not check for duplicates)"
+Worksheets(Sheet2p1).Range(Worksheets(Sheet2p1).Cells(LastRow2p1 + 1, 1), Worksheets(Sheet2p1).Cells(LastRow2p1 + 1, 2)).Merge Across:=True
+
+'calculation of overall 2p1 for each special population (does not remove duplicates)
+index = 1
+For sp = firstSP To lastSP
+
+    With Worksheets(FirstSheet)
+        
+        'numerator consists of ALL COMPLETERS IN THE S.P. (during and not during AY)
+        numerator = WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer_notenrolled, _
+                    .Range(.Cells(2, sp), .Cells(LastRow, sp)), 1) + _
+                    WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer, _
+                    .Range(.Cells(2, sp), .Cells(LastRow, sp)), 1)
+        
+        'denominator consists of ALL COMPLETERS IN THE S.P. OR THOSE WHO DROPPED OUT (Other/Not Enrolled)
+        denominator = WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer_notenrolled, _
+                    .Range(.Cells(2, sp), .Cells(LastRow, sp)), 1) + _
+                    WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer, _
+                    .Range(.Cells(2, sp), .Cells(LastRow, sp)), 1) + _
+                    WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), other_notenrolled, _
+                    .Range(.Cells(2, sp), .Cells(LastRow, sp)), 1)
+
+    End With
+    
+    'checks divide by zero error and formats result
+    If denominator = 0 Then
+        Worksheets(Sheet2p1).Cells(LastRow2p1 + 1, 3 + index).Value = "N/A (no cases)"
+    Else
+        result = numerator / denominator
+
+        If result >= target_2p1 Then
+            Worksheets(Sheet2p1).Cells(LastRow2p1 + 1, 3 + index).Value = FormatPercent(result, 2) & " (" & numerator & "/" & Format(denominator, "#,###") & ")" & " (Above Target of " & Format(target_2p1, "0.00%") & ")"
+            Worksheets(Sheet2p1).Cells(LastRow2p1 + 1, 3 + index).Font.Color = RGB(0, 110, 0)
+        Else
+            Worksheets(Sheet2p1).Cells(LastRow2p1 + 1, 3 + index).Value = FormatPercent(result, 2) & " (" & numerator & "/" & Format(denominator, "#,###") & ")" & " (Below Target of " & Format(target_2p1, "0.00%") & ")"
+            Worksheets(Sheet2p1).Cells(LastRow2p1 + 1, 3 + index).Font.Color = RGB(230, 0, 0)
+        End If
+
+    End If
+
+    index = index + 1
+    
+Next sp
+
+'calculation of overall nontraditional gender 2p1 for college (does not remove duplicates)
+'checks divide by zero error and formats result
+If denom_NTG_total = 0 Then
+    Worksheets(Sheet2p1).Cells(LastRow2p1 + 1, LastColumn2p1).Value = "N/A (no cases)"
+Else
+    overall_NTG_total = num_NTG_total / denom_NTG_total
+
+    If overall_NTG_total >= target_2p1 Then
+        Worksheets(Sheet2p1).Cells(LastRow2p1 + 1, LastColumn2p1).Value = FormatPercent(overall_NTG_total, 2) & " (" & num_NTG_total & "/" & Format(denom_NTG_total, "#,###") & ")" & " (Above Target of " & Format(target_2p1, "0.00%") & ")" _
+        & " (Excludes programs with no nontrad. gender)"
+        Worksheets(Sheet2p1).Cells(LastRow2p1 + 1, LastColumn2p1).Font.Color = RGB(0, 110, 0)
+    Else
+        Worksheets(Sheet2p1).Cells(LastRow2p1 + 1, LastColumn2p1).Value = FormatPercent(overall_NTG_total, 2) & " (" & num_NTG_total & "/" & Format(denom_NTG_total, "#,###") & ")" & " (Below Target of " & Format(target_2p1, "0.00%") & ")" _
+        & " (Excludes programs with no nontrad. gender)"
+        Worksheets(Sheet2p1).Cells(LastRow2p1 + 1, LastColumn2p1).Font.Color = RGB(230, 0, 0)
+    End If
+
+End If
+
+LastRow2p1 = target2p1_ws.Cells.Find("*", SearchOrder:=xlByRows, SearchDirection:=xlPrevious).Row
+LastColumn2p1 = target2p1_ws.Cells(1, Columns.Count).End(xlToLeft).Column
+
+'formats new table
+With Worksheets(Sheet2p1)
+
+    .Range(.Cells(1, 1), .Cells(LastRow2p1, LastColumn2p1)).HorizontalAlignment = xlLeft
+    .Range(.Cells(1, 1), .Cells(LastRow2p1, LastColumn2p1)).Borders.LineStyle = xlContinuous
+    .Range(.Cells(1, 1), .Cells(LastRow2p1, LastColumn2p1)).BorderAround Weight:=xlThick
+
+End With
+'***2P1 TABLE END***
+
+'***3P1 TABLE START***
+'Create table for 3p1 and adjust column widths
+Set target3p1_ws = original_wb.Worksheets.Add(Type:=xlWorksheet, After:=Sheets(Sheet2p1))
+target3p1_ws.Name = "3p1"
+Sheet3p1 = target3p1_ws.Name
+
+With Worksheets(Sheet3p1)
+
+    .Cells(1, 1).Value = "CIP Code"
+    .Columns(1).ColumnWidth = 15
+    .Cells(1, 2).Value = "Program/IRP Code"
+    .Columns(2).ColumnWidth = 20
+    .Cells(1, 3).Value = "Overall"
+    .Columns(3).ColumnWidth = 40
+    
+End With
+
+LastColumn3p1 = target3p1_ws.Cells(1, Columns.Count).End(xlToLeft).Column
+
+i = 1
+For sp = firstSP To lastSP
+    Worksheets(Sheet3p1).Cells(1, LastColumn3p1 + i).Value2 = Worksheets(FirstSheet).Cells(1, sp).Value2
+    Worksheets(Sheet3p1).Columns(LastColumn3p1 + i).ColumnWidth = 5 + Len(Worksheets(FirstSheet).Cells(1, sp).Value2)
+    i = i + 1
+Next sp
+
+'calculation of overall 3p1 for each program
+num_total = 0
+denom_total = 0
+For i = LBound(uniqueProgramArray) To UBound(uniqueProgramArray)
+
+    Worksheets(Sheet3p1).Cells(i + 1, 2).Value2 = uniqueProgramArray(i)
+    
+    With Worksheets(FirstSheet)
+        
+        'looks up the nontraditional gender for the program
+        nontrad_female = WorksheetFunction.IfError(WorksheetFunction.index(.Range(.Cells(2, LastColumn + 1), .Cells(LastRow, LastColumn + 1)), _
+                        WorksheetFunction.Match(uniqueProgramArray(i), .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), 0)), "")
+        
+        nontrad_male = WorksheetFunction.IfError(WorksheetFunction.index(.Range(.Cells(2, LastColumn + 2), .Cells(LastRow, LastColumn + 2)), _
+                        WorksheetFunction.Match(uniqueProgramArray(i), .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), 0)), "")
+        
+        'if the nontrad. gender is female, counts only female and non-binary and unknown concentrators
+        If nontrad_female = "Y" Then
+        
+            numerator = WorksheetFunction.CountIfs(.Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 2, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, timeColumn), .Cells(LastRow, timeColumn)), ">=" & concentratorMin) + _
+                    WorksheetFunction.CountIfs(.Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 3, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, timeColumn), .Cells(LastRow, timeColumn)), ">=" & concentratorMin) + _
+                    WorksheetFunction.CountIfs(.Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 4, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, timeColumn), .Cells(LastRow, timeColumn)), ">=" & concentratorMin)
+            
+            denominator = WorksheetFunction.CountIfs(.Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, timeColumn), .Cells(LastRow, timeColumn)), ">=" & concentratorMin)
+        
+            'adds to global variables for overall calculation later
+            num_total = num_total + numerator
+            denom_total = denom_total + denominator
+        
+        'if the nontrad. gender is male, counts only male and unknown and non-binary concentrators
+        ElseIf nontrad_male = "Y" Then
+            
+            numerator = WorksheetFunction.CountIfs(.Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 1, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, timeColumn), .Cells(LastRow, timeColumn)), ">=" & concentratorMin) + _
+                    WorksheetFunction.CountIfs(.Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 3, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, timeColumn), .Cells(LastRow, timeColumn)), ">=" & concentratorMin) + _
+                    WorksheetFunction.CountIfs(.Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 4, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, timeColumn), .Cells(LastRow, timeColumn)), ">=" & concentratorMin)
+            
+            denominator = WorksheetFunction.CountIfs(.Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, timeColumn), .Cells(LastRow, timeColumn)), ">=" & concentratorMin)
+        
+            'adds to global variables for overall calculation later
+            num_total = num_total + numerator
+            denom_total = denom_total + denominator
+        
+        'otherwise there is no nontraditional gender for program based on CIP code
+        Else: denominator = -1
+        
+        End If
+            
+    End With
+    
+    'checks for divide by zero error and no nontraditional gender. Otherwise formats result
+    If denominator = 0 Then
+        Worksheets(Sheet3p1).Cells(i + 1, LastColumn3p1).Value = "N/A (no cases)"
+    ElseIf denominator = -1 Then
+        Worksheets(Sheet3p1).Cells(i + 1, LastColumn3p1).Value = "N/A (no nontraditional gender)"
+    Else
+        result = numerator / denominator
+
+        If result >= target_3p1 Then
+            Worksheets(Sheet3p1).Cells(i + 1, LastColumn3p1).Value = FormatPercent(result, 2) & " (" & numerator & "/" & Format(denominator, "#,###") & ")" & " (Above Target " & Format(target_3p1, "0.00%") & ")"
+            Worksheets(Sheet3p1).Cells(i + 1, LastColumn3p1).Font.Color = RGB(0, 110, 0)
+        Else
+            Worksheets(Sheet3p1).Cells(i + 1, LastColumn3p1).Value = FormatPercent(result, 2) & " (" & numerator & "/" & Format(denominator, "#,###") & ")" & " (Below Target " & Format(target_3p1, "0.00%") & ")"
+            Worksheets(Sheet3p1).Cells(i + 1, LastColumn3p1).Font.Color = RGB(230, 0, 0)
+        End If
+
+    End If
+
+Next
+
+'calculation of 3p1 for each program's special population
+For i = LBound(uniqueProgramArray) To UBound(uniqueProgramArray)
+    
+    'used for writing to new cell in table for each S.P.
+    index = 1
+    
+    'looks up the nontraditional gender for the program
+    With Worksheets(FirstSheet)
+   
+        nontrad_female = WorksheetFunction.IfError(WorksheetFunction.index(.Range(.Cells(2, LastColumn + 1), .Cells(LastRow, LastColumn + 1)), _
+                        WorksheetFunction.Match(uniqueProgramArray(i), .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), 0)), "")
+        
+        nontrad_male = WorksheetFunction.IfError(WorksheetFunction.index(.Range(.Cells(2, LastColumn + 2), .Cells(LastRow, LastColumn + 2)), _
+                        WorksheetFunction.Match(uniqueProgramArray(i), .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), 0)), "")
+    End With
+    
+    For sp = firstSP To lastSP
+    
+    With Worksheets(FirstSheet)
+        
+        'if the nontrad. gender is female, counts only female and non-binary and unknown concentrators
+        If nontrad_female = "Y" Then
+        
+            numerator = WorksheetFunction.CountIfs(.Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 2, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, timeColumn), .Cells(LastRow, timeColumn)), ">=" & concentratorMin, .Range(.Cells(2, sp), .Cells(LastRow, sp)), 1) + _
+                    WorksheetFunction.CountIfs(.Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 3, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, timeColumn), .Cells(LastRow, timeColumn)), ">=" & concentratorMin, .Range(.Cells(2, sp), .Cells(LastRow, sp)), 1) + _
+                    WorksheetFunction.CountIfs(.Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 4, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, timeColumn), .Cells(LastRow, timeColumn)), ">=" & concentratorMin, .Range(.Cells(2, sp), .Cells(LastRow, sp)), 1)
+            
+            denominator = WorksheetFunction.CountIfs(.Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, timeColumn), .Cells(LastRow, timeColumn)), ">=" & concentratorMin, .Range(.Cells(2, sp), .Cells(LastRow, sp)), 1)
+        
+        'if the nontrad. gender is male, counts only male and unknown and non-binary concentrators
+        ElseIf nontrad_male = "Y" Then
+            
+            numerator = WorksheetFunction.CountIfs(.Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 1, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, timeColumn), .Cells(LastRow, timeColumn)), ">=" & concentratorMin, .Range(.Cells(2, sp), .Cells(LastRow, sp)), 1) + _
+                    WorksheetFunction.CountIfs(.Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 3, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, timeColumn), .Cells(LastRow, timeColumn)), ">=" & concentratorMin, .Range(.Cells(2, sp), .Cells(LastRow, sp)), 1) + _
+                    WorksheetFunction.CountIfs(.Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 4, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, timeColumn), .Cells(LastRow, timeColumn)), ">=" & concentratorMin, .Range(.Cells(2, sp), .Cells(LastRow, sp)), 1)
+            
+            denominator = WorksheetFunction.CountIfs(.Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, timeColumn), .Cells(LastRow, timeColumn)), ">=" & concentratorMin, .Range(.Cells(2, sp), .Cells(LastRow, sp)), 1)
+        
+        'otherwise there is no nontraditional gender for program based on CIP code
+        Else: denominator = -1
+        
+        End If
+
+    End With
+    
+    'checks for divide by zero error and no nontraditional gender. Otherwise formats result
+    If denominator = 0 Then
+        Worksheets(Sheet3p1).Cells(i + 1, LastColumn3p1 + index).Value = "N/A (no cases)"
+    ElseIf denominator = -1 Then
+        Worksheets(Sheet3p1).Cells(i + 1, LastColumn3p1 + index).Value = "N/A (no nontraditional gender)"
+    Else
+        result = numerator / denominator
+
+        If result >= target_3p1 Then
+            Worksheets(Sheet3p1).Cells(i + 1, LastColumn3p1 + index).Value = FormatPercent(result, 2) & " (" & numerator & "/" & Format(denominator, "#,###") & ")" & " (Above Target " & Format(target_3p1, "0.00%") & ")"
+            Worksheets(Sheet3p1).Cells(i + 1, LastColumn3p1 + index).Font.Color = RGB(0, 110, 0)
+        Else
+            Worksheets(Sheet3p1).Cells(i + 1, LastColumn3p1 + index).Value = FormatPercent(result, 2) & " (" & numerator & "/" & Format(denominator, "#,###") & ")" & " (Below Target " & Format(target_3p1, "0.00%") & ")"
+            Worksheets(Sheet3p1).Cells(i + 1, LastColumn3p1 + index).Font.Color = RGB(230, 0, 0)
+        End If
+
+    End If
+    
+    index = index + 1
+    Next sp
+
+Next
+
+'adds CIP code to new table
+For i = LBound(uniqueProgramArray) To UBound(uniqueProgramArray)
+    
+    With Worksheets(FirstSheet)
+    
+        Worksheets(Sheet3p1).Cells(i + 1, 1).Value2 = WorksheetFunction.index(.Range(.Cells(2, cipColumn), .Cells(LastRow, cipColumn)), _
+        WorksheetFunction.Match(uniqueProgramArray(i), .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), 0))
+    
+    End With
+
+Next i
+
+LastColumn3p1 = target3p1_ws.Cells(1, Columns.Count).End(xlToLeft).Column
+LastRow3p1 = target3p1_ws.Cells.Find("*", SearchOrder:=xlByRows, SearchDirection:=xlPrevious).Row
+
+'calculation of overall 3p1 for college (does not remove duplicates)
+'checks divide by zero error and formats result
+If denom_total = 0 Then
+    Worksheets(Sheet3p1).Cells(LastRow3p1 + 1, 3).Value = "N/A (no cases)"
+Else
+    overall_total = num_total / denom_total
+
+    If overall_total >= target_3p1 Then
+        Worksheets(Sheet3p1).Cells(LastRow3p1 + 1, 3).Value = FormatPercent(overall_total, 2) & " (" & num_total & "/" & Format(denom_total, "#,###") & ")" & " (Above Target of " & Format(target_2p1, "0.00%") & ")"
+        Worksheets(Sheet3p1).Cells(LastRow3p1 + 1, 3).Font.Color = RGB(0, 110, 0)
+    Else
+        Worksheets(Sheet3p1).Cells(LastRow3p1 + 1, 3).Value = FormatPercent(overall_total, 2) & " (" & num_total & "/" & Format(denom_total, "#,###") & ")" & " (Below Target of " & Format(target_2p1, "0.00%") & ")"
+        Worksheets(Sheet3p1).Cells(LastRow3p1 + 1, 3).Font.Color = RGB(230, 0, 0)
+    End If
+
+End If
+
+Worksheets(Sheet3p1).Cells(LastRow3p1 + 1, 1).Value = "Overall (does not check for duplicates)"
+Worksheets(Sheet3p1).Range(Worksheets(Sheet3p1).Cells(LastRow3p1 + 1, 1), Worksheets(Sheet3p1).Cells(LastRow3p1 + 1, 2)).Merge Across:=True
+
+'calculation of 3p1 for each program's special population
+
+'used for writing to new cell in table for each S.P. (first column is hard-coded).
+index = 1
+For sp = firstSP To lastSP
+    
+    num_NTG_total = 0
+    denom_NTG_total = 0
+    overall_NTG_total = 0
+    
+    'Goes through programs
+    For i = LBound(uniqueProgramArray) To UBound(uniqueProgramArray)
+    
+        'looks up the nontraditional gender for the program
+        With Worksheets(FirstSheet)
+        
+             nontrad_female = WorksheetFunction.IfError(WorksheetFunction.index(.Range(.Cells(2, LastColumn + 1), .Cells(LastRow, LastColumn + 1)), _
+                             WorksheetFunction.Match(uniqueProgramArray(i), .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), 0)), "")
+             
+             nontrad_male = WorksheetFunction.IfError(WorksheetFunction.index(.Range(.Cells(2, LastColumn + 2), .Cells(LastRow, LastColumn + 2)), _
+                             WorksheetFunction.Match(uniqueProgramArray(i), .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), 0)), "")
+        End With
+        
+        With Worksheets(FirstSheet)
+            
+            'if the nontrad. gender is female, counts only female and unknown and non-binary concentrators
+            If nontrad_female = "Y" Then
+            
+                numerator = WorksheetFunction.CountIfs(.Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 2, _
+                        .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                        .Range(.Cells(2, timeColumn), .Cells(LastRow, timeColumn)), ">=" & concentratorMin, .Range(.Cells(2, sp), .Cells(LastRow, sp)), 1) + _
+                        WorksheetFunction.CountIfs(.Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 3, _
+                        .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                        .Range(.Cells(2, timeColumn), .Cells(LastRow, timeColumn)), ">=" & concentratorMin, .Range(.Cells(2, sp), .Cells(LastRow, sp)), 1) + _
+                        WorksheetFunction.CountIfs(.Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 4, _
+                        .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                        .Range(.Cells(2, timeColumn), .Cells(LastRow, timeColumn)), ">=" & concentratorMin, .Range(.Cells(2, sp), .Cells(LastRow, sp)), 1)
+                
+                denominator = WorksheetFunction.CountIfs(.Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                        .Range(.Cells(2, timeColumn), .Cells(LastRow, timeColumn)), ">=" & concentratorMin, .Range(.Cells(2, sp), .Cells(LastRow, sp)), 1)
+            
+                num_NTG_total = num_NTG_total + numerator
+                denom_NTG_total = denom_NTG_total + denominator
+            
+            'if the nontrad. gender is male, counts only male and unknown and non-binary concentrators
+            ElseIf nontrad_male = "Y" Then
+                
+                numerator = WorksheetFunction.CountIfs(.Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 1, _
+                        .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                        .Range(.Cells(2, timeColumn), .Cells(LastRow, timeColumn)), ">=" & concentratorMin, .Range(.Cells(2, sp), .Cells(LastRow, sp)), 1) + _
+                        WorksheetFunction.CountIfs(.Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 3, _
+                        .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                        .Range(.Cells(2, timeColumn), .Cells(LastRow, timeColumn)), ">=" & concentratorMin, .Range(.Cells(2, sp), .Cells(LastRow, sp)), 1) + _
+                        WorksheetFunction.CountIfs(.Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 4, _
+                        .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                        .Range(.Cells(2, timeColumn), .Cells(LastRow, timeColumn)), ">=" & concentratorMin, .Range(.Cells(2, sp), .Cells(LastRow, sp)), 1)
+                
+                denominator = WorksheetFunction.CountIfs(.Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                        .Range(.Cells(2, timeColumn), .Cells(LastRow, timeColumn)), ">=" & concentratorMin, .Range(.Cells(2, sp), .Cells(LastRow, sp)), 1)
+            
+                num_NTG_total = num_NTG_total + numerator
+                denom_NTG_total = denom_NTG_total + denominator
+            
+            End If
+    
+        End With
+        
+    Next i
+    
+    'checks for divide by zero error and no nontraditional gender. Otherwise formats result
+    If denom_NTG_total = 0 Then
+        Worksheets(Sheet3p1).Cells(LastRow3p1 + 1, 3 + index).Value = "N/A (no cases)"
+    Else
+        overall_NTG_total = num_NTG_total / denom_NTG_total
+
+        If overall_NTG_total >= target_3p1 Then
+            Worksheets(Sheet3p1).Cells(LastRow3p1 + 1, 3 + index).Value = FormatPercent(overall_NTG_total, 2) & " (" & num_NTG_total & "/" & Format(denom_NTG_total, "#,###") & ")" & " (Above Target " & Format(target_3p1, "0.00%") & ")"
+            Worksheets(Sheet3p1).Cells(LastRow3p1 + 1, 3 + index).Font.Color = RGB(0, 110, 0)
+        Else
+            Worksheets(Sheet3p1).Cells(LastRow3p1 + 1, 3 + index).Value = FormatPercent(overall_NTG_total, 2) & " (" & num_NTG_total & "/" & Format(denom_NTG_total, "#,###") & ")" & " (Below Target " & Format(target_3p1, "0.00%") & ")"
+            Worksheets(Sheet3p1).Cells(LastRow3p1 + 1, 3 + index).Font.Color = RGB(230, 0, 0)
+        End If
+
+    End If
+    
+    index = index + 1
+
+Next sp
+
+LastRow3p1 = target3p1_ws.Cells.Find("*", SearchOrder:=xlByRows, SearchDirection:=xlPrevious).Row
+
+'formats new 3p1 table
+With Worksheets(Sheet3p1)
+
+    .Range(.Cells(1, 1), .Cells(LastRow3p1, LastColumn3p1)).HorizontalAlignment = xlLeft
+    .Range(.Cells(1, 1), .Cells(LastRow3p1, LastColumn3p1)).Borders.LineStyle = xlContinuous
+    .Range(.Cells(1, 1), .Cells(LastRow3p1, LastColumn3p1)).BorderAround Weight:=xlThick
+
+End With
+'***3P1 TABLE ENDS***
+
+'***7B ENROLLMENT TABLE START***
+'Create table for Chart 7b -- Enrollment and adjust column widths
+Set target_7bEnrollment_ws = original_wb.Worksheets.Add(Type:=xlWorksheet, After:=Sheets(Sheet3p1))
+target_7bEnrollment_ws.Name = "Chart 7b - Enrollment"
+Sheet7bEnrollment = target_7bEnrollment_ws.Name
+
+With Worksheets(Sheet7bEnrollment)
+
+    .Cells(1, 1).Value = "CIP Code"
+    .Columns(1).ColumnWidth = 15
+    .Cells(1, 2).Value = "Program/IRP Code"
+    .Columns(2).ColumnWidth = 20
+    .Cells(1, 3).Value = "Overall Enrollment"
+    .Columns(3).ColumnWidth = 20
+    
+End With
+
+LastColumn7b_enrollment = target_7bEnrollment_ws.Cells(1, Columns.Count).End(xlToLeft).Column
+
+i = 1
+For sp = firstSP To lastSP
+    Worksheets(Sheet7bEnrollment).Cells(1, LastColumn7b_enrollment + i).Value2 = Worksheets(FirstSheet).Cells(1, sp).Value2
+    Worksheets(Sheet7bEnrollment).Columns(LastColumn7b_enrollment + i).ColumnWidth = 5 + Len(Worksheets(FirstSheet).Cells(1, sp).Value2)
+    i = i + 1
+Next sp
+
+'calculation of overall enrollment for each program
+enrollment_total = 0
+For i = LBound(uniqueProgramArray) To UBound(uniqueProgramArray)
+    
+    Worksheets(Sheet7bEnrollment).Cells(i + 1, 2).Value2 = uniqueProgramArray(i)
+    
+    With Worksheets(FirstSheet)
+    
+        'consists of all students in program enrolled in at least minimumum number of credits/hours
+        enrollment = WorksheetFunction.CountIfs(.Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, timeColumn), .Cells(LastRow, timeColumn)), ">=" & concentratorMin)
+       
+    End With
+    
+    'adds this to global variable for overall total enrollment later on
+    enrollment_total = enrollment_total + enrollment
+
+    'checks if enrollment = 0 error
+    If enrollment = 0 Then
+        Worksheets(Sheet7bEnrollment).Cells(i + 1, LastColumn7b_enrollment).Value = "N/A (no cases)"
+    Else
+        Worksheets(Sheet7bEnrollment).Cells(i + 1, LastColumn7b_enrollment).Value = Format(enrollment, "#,###")
+    End If
+    
+Next
+
+'calculation of 7b - Enrollment for each program's special population
+For i = LBound(uniqueProgramArray) To UBound(uniqueProgramArray)
+    
+    index = 1
+    For sp = firstSP To lastSP
+
+        With Worksheets(FirstSheet)
+            
+            'numerator consists of concentrators in the program IN THE S.P. with min number of credits/hours
+            numerator = WorksheetFunction.CountIfs(.Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                        .Range(.Cells(2, timeColumn), .Cells(LastRow, timeColumn)), ">=" & concentratorMin, .Range(.Cells(2, sp), .Cells(LastRow, sp)), 1)
+            
+            'denominator consists of ALL concentrators in the program with min number of credits/hours
+            denominator = WorksheetFunction.CountIfs(.Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, timeColumn), .Cells(LastRow, timeColumn)), ">=" & concentratorMin)
+    
+        End With
+        
+        'checks divide by zero error and formats result
+        If denominator = 0 Then
+            Worksheets(Sheet7bEnrollment).Cells(i + 1, LastColumn7b_enrollment + index).Value = "N/A (no cases)"
+        Else
+            result = numerator / denominator
+    
+            Worksheets(Sheet7bEnrollment).Cells(i + 1, LastColumn7b_enrollment + index).Value = FormatPercent(result, 2) & " (" & numerator & "/" & Format(denominator, "#,###") & ")"
+    
+        End If
+    
+        index = index + 1
+        
+    Next sp
+
+Next i
+
+'adds CIP code to new table
+For i = LBound(uniqueProgramArray) To UBound(uniqueProgramArray)
+    
+    With Worksheets(FirstSheet)
+    
+        Worksheets(Sheet7bEnrollment).Cells(i + 1, 1).Value2 = WorksheetFunction.index(.Range(.Cells(2, cipColumn), .Cells(LastRow, cipColumn)), _
+        WorksheetFunction.Match(uniqueProgramArray(i), .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), 0))
+    
+    End With
+
+Next i
+
+LastColumn7b_enrollment = target_7bEnrollment_ws.Cells(1, Columns.Count).End(xlToLeft).Column
+LastRow7b_enrollment = target_7bEnrollment_ws.Cells.Find("*", SearchOrder:=xlByRows, SearchDirection:=xlPrevious).Row
+
+'calculates 7b enrollment rate for each program for nontraditional gender, which is not a S.P. column in the file.
+For i = LBound(uniqueProgramArray) To UBound(uniqueProgramArray)
+    
+    Worksheets(Sheet7bEnrollment).Cells(i + 1, LastColumn7b_enrollment + 1).Value = "See Chart 3P1 - Overall"
+    
+Next i
+
+Worksheets(Sheet7bEnrollment).Cells(1, LastColumn7b_enrollment + 1).Value = "Nontraditional in this field"
+Worksheets(Sheet7bEnrollment).Cells(1, LastColumn7b_enrollment + 1).ColumnWidth = 45
+
+LastColumn7b_enrollment = target_7bEnrollment_ws.Cells(1, Columns.Count).End(xlToLeft).Column
+
+
+'calculation of overall 7b enrollment for college (does not remove duplicates)
+'checks if zero and if not formats result
+If enrollment_total = 0 Then
+    Worksheets(Sheet7bEnrollment).Cells(LastRow7b_enrollment + 1, 3).Value = "N/A (no cases)"
+Else
+    
+    Worksheets(Sheet7bEnrollment).Cells(LastRow7b_enrollment + 1, 3).Value = Format(enrollment_total, "#,###")
+
+End If
+
+Worksheets(Sheet7bEnrollment).Cells(LastRow7b_enrollment + 1, 1).Value = "Overall (does not check for duplicates)"
+Worksheets(Sheet7bEnrollment).Range(Worksheets(Sheet7bEnrollment).Cells(LastRow7b_enrollment + 1, 1), Worksheets(Sheet7bEnrollment).Cells(LastRow7b_enrollment + 1, 2)).Merge Across:=True
+
+'calculation of overall 7b Enrollment for each special population (does not remove duplicates)
+index = 1
+For sp = firstSP To lastSP
+
+    With Worksheets(FirstSheet)
+        
+        'numerator consists of ALL concentrators IN THE S.P.
+        numerator = WorksheetFunction.CountIfs(.Range(.Cells(2, timeColumn), .Cells(LastRow, timeColumn)), ">=" & concentratorMin, _
+                    .Range(.Cells(2, sp), .Cells(LastRow, sp)), 1)
+                        
+        'denominator consists of ALL concentrators (enrollment total)
+        denominator = enrollment_total
+
+    End With
+    
+    'checks divide by zero error and formats result
+    If denominator = 0 Then
+        Worksheets(Sheet7bEnrollment).Cells(LastRow7b_enrollment + 1, 3 + index).Value = "N/A (no cases)"
+    Else
+        result = numerator / denominator
+
+        Worksheets(Sheet7bEnrollment).Cells(LastRow7b_enrollment + 1, 3 + index).Value = FormatPercent(result, 2) & " (" & numerator & "/" & Format(denominator, "#,###") & ")"
+    End If
+
+    index = index + 1
+    
+Next sp
+
+'calculation of overall nontraditional gender 7b Enrollment for college (does not remove duplicates)
+Worksheets(Sheet7bEnrollment).Cells(LastRow7b_enrollment + 1, LastColumn2p1).Value = "See Chart 3P1 - Overall"
+
+
+LastColumn7b_enrollment = target_7bEnrollment_ws.Cells(1, Columns.Count).End(xlToLeft).Column
+LastRow7b_enrollment = target_7bEnrollment_ws.Cells.Find("*", SearchOrder:=xlByRows, SearchDirection:=xlPrevious).Row
+
+
+'formats new table
+With Worksheets(Sheet7bEnrollment)
+
+    .Range(.Cells(1, 1), .Cells(LastRow7b_enrollment, LastColumn7b_enrollment)).HorizontalAlignment = xlLeft
+    .Range(.Cells(1, 1), .Cells(LastRow7b_enrollment, LastColumn7b_enrollment)).Borders.LineStyle = xlContinuous
+    .Range(.Cells(1, 1), .Cells(LastRow7b_enrollment, LastColumn7b_enrollment)).BorderAround Weight:=xlThick
+    .Range(.Cells(2, 3), .Cells(LastRow7b_enrollment, 3)).HorizontalAlignment = xlRight
+
+End With
+'***7B ENROLLMENT TABLE END***
+
+
+'***7B COMPLETION TABLE START***
+'Create table for Chart 7b -- Completion and adjust column widths
+Set target_7bCompletion_ws = original_wb.Worksheets.Add(Type:=xlWorksheet, After:=Sheets(Sheet7bEnrollment))
+target_7bCompletion_ws.Name = "Chart 7b - Completion"
+Sheet7bCompletion = target_7bCompletion_ws.Name
+
+With Worksheets(Sheet7bCompletion)
+
+    .Cells(1, 1).Value = "CIP Code"
+    .Columns(1).ColumnWidth = 15
+    .Cells(1, 2).Value = "Program/IRP Code"
+    .Columns(2).ColumnWidth = 20
+    .Cells(1, 3).Value = "Overall Completion"
+    .Columns(3).ColumnWidth = 20
+    
+End With
+
+'Last column now column 3
+LastColumn7b_completion = target_7bCompletion_ws.Cells(1, Columns.Count).End(xlToLeft).Column
+
+'Adds headers in first row for each special population
+i = 1
+For sp = firstSP To lastSP
+    Worksheets(Sheet7bCompletion).Cells(1, LastColumn7b_completion + i).Value2 = Worksheets(FirstSheet).Cells(1, sp).Value2
+    Worksheets(Sheet7bCompletion).Columns(LastColumn7b_completion + i).ColumnWidth = 5 + Len(Worksheets(FirstSheet).Cells(1, sp).Value2)
+    i = i + 1
+Next sp
+
+'calculation of overall completion for each program
+completion_total = 0
+For i = LBound(uniqueProgramArray) To UBound(uniqueProgramArray)
+    
+    Worksheets(Sheet7bCompletion).Cells(i + 1, 2).Value2 = uniqueProgramArray(i)
+    
+    With Worksheets(FirstSheet)
+    
+        'consists of all COMPLETERS in program REGARDLESS OF minimumum number of credits/hours
+        completion = WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer_notenrolled, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i)) + _
+                    WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i))
+
+       
+    End With
+    
+    'adds this to global variable for overall total enrollment later on
+    completion_total = completion_total + completion
+
+    'checks if completion = 0 error
+    If completion = 0 Then
+        Worksheets(Sheet7bCompletion).Cells(i + 1, LastColumn7b_completion).Value = "N/A (no cases)"
+    Else
+        Worksheets(Sheet7bCompletion).Cells(i + 1, LastColumn7b_completion).Value = Format(completion, "#,###")
+    End If
+    
+Next
+
+'calculation of 7b - Completion for each program's special population OUT OF ALL COMPLETERS
+For i = LBound(uniqueProgramArray) To UBound(uniqueProgramArray)
+    
+    index = 1
+    For sp = firstSP To lastSP
+
+        With Worksheets(FirstSheet)
+            
+            'numerator consists of ALL COMPLETERS in the program IN THE S.P. (during and not during AY)
+            numerator = WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer_notenrolled, _
+                        .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                        .Range(.Cells(2, sp), .Cells(LastRow, sp)), 1) + _
+                        WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer, _
+                        .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                        .Range(.Cells(2, sp), .Cells(LastRow, sp)), 1)
+            
+            'denominator consists of ALL COMPLETERS in the program
+            denominator = WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer_notenrolled, _
+                        .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i)) + _
+                        WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer, _
+                        .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i))
+    
+        End With
+        
+        'checks divide by zero error and formats result
+        If denominator = 0 Then
+            Worksheets(Sheet7bCompletion).Cells(i + 1, LastColumn7b_completion + index).Value = "N/A (no cases)"
+        Else
+            result = numerator / denominator
+    
+            Worksheets(Sheet7bCompletion).Cells(i + 1, LastColumn7b_completion + index).Value = FormatPercent(result, 2) & " (" & numerator & "/" & Format(denominator, "#,###") & ")"
+    
+        End If
+    
+        index = index + 1
+        
+    Next sp
+
+Next i
+
+'adds CIP code to new table
+For i = LBound(uniqueProgramArray) To UBound(uniqueProgramArray)
+    
+    With Worksheets(FirstSheet)
+    
+        Worksheets(Sheet7bCompletion).Cells(i + 1, 1).Value2 = WorksheetFunction.index(.Range(.Cells(2, cipColumn), .Cells(LastRow, cipColumn)), _
+        WorksheetFunction.Match(uniqueProgramArray(i), .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), 0))
+    
+    End With
+
+Next i
+
+LastColumn7b_completion = target_7bCompletion_ws.Cells(1, Columns.Count).End(xlToLeft).Column
+LastRow7b_completion = target_7bCompletion_ws.Cells.Find("*", SearchOrder:=xlByRows, SearchDirection:=xlPrevious).Row
+
+'calculates COMPLETION rate for each program for nontraditional gender, which is not a S.P. column in the file.
+num_NTG_total = 0
+denom_NTG_total = 0
+For i = LBound(uniqueProgramArray) To UBound(uniqueProgramArray)
+    
+    With Worksheets(FirstSheet)
+        
+        'looks up the nontraditional gender for the program
+        nontrad_female = WorksheetFunction.IfError(WorksheetFunction.index(.Range(.Cells(2, LastColumn + 1), .Cells(LastRow, LastColumn + 1)), _
+                        WorksheetFunction.Match(uniqueProgramArray(i), .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), 0)), "")
+        
+        nontrad_male = WorksheetFunction.IfError(WorksheetFunction.index(.Range(.Cells(2, LastColumn + 2), .Cells(LastRow, LastColumn + 2)), _
+                        WorksheetFunction.Match(uniqueProgramArray(i), .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), 0)), "")
+        
+        'if the nontrad. gender is female, counts only female and unknown and non-binary COMPLETERS
+        If nontrad_female = "Y" Then
+        
+            'numerator consists of female/unknown/non-binary COMPLETERS in the program (during and not during AY)
+            numerator = WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer_notenrolled, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 2) + _
+                    WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer_notenrolled, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 3) + _
+                    WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer_notenrolled, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 4) + _
+                    WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 2) + _
+                    WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 3) + _
+                    WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 4)
+
+
+            'denominator consists of ALL COMPLETERS in the program
+            denominator = WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer_notenrolled, _
+                        .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i)) + _
+                        WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer, _
+                        .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i))
+        
+            'adds this to global variables for overall total nontrad. calculation later on
+            num_NTG_total = num_NTG_total + numerator
+            denom_NTG_total = denom_NTG_total + denominator
+        
+        'if the nontrad. gender is male, counts only male and unknown and non-binary concentrators
+        ElseIf nontrad_male = "Y" Then
+            
+            'numerator consists of male/unknown/non-binary COMPLETERS in the program (during and not during AY)
+            numerator = WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer_notenrolled, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 1) + _
+                    WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 1) + _
+                    WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer_notenrolled, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 3) + _
+                    WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 3) + _
+                    WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer_notenrolled, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 4) + _
+                    WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 4)
+            
+            'denominator consists of ALL COMPLETERS in the program (Other/Not Enrolled)
+            denominator = WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer_notenrolled, _
+                        .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i)) + _
+                        WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer, _
+                        .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i))
+            
+            'adds this to global variables for overall total nontrad. calculation later on
+            num_NTG_total = num_NTG_total + numerator
+            denom_NTG_total = denom_NTG_total + denominator
+            
+        'otherwise there is no nontraditional gender for program based on CIP code
+        Else: denominator = -1
+        
+        End If
+            
+    End With
+    
+    'checks for divide by zero error and no nontraditional gender. Otherwise formats result
+    If denominator = 0 Then
+        Worksheets(Sheet7bCompletion).Cells(i + 1, LastColumn7b_completion + 1).Value = "N/A (no cases)"
+    ElseIf denominator = -1 Then
+        Worksheets(Sheet7bCompletion).Cells(i + 1, LastColumn7b_completion + 1).Value = "N/A (no nontraditional gender)"
+    Else
+        result = numerator / denominator
+
+        Worksheets(Sheet7bCompletion).Cells(i + 1, LastColumn7b_completion + 1).Value = FormatPercent(result, 2) & " (" & numerator & "/" & Format(denominator, "#,###") & ")"
+        
+    End If
+    
+Next i
+
+Worksheets(Sheet7bCompletion).Cells(1, LastColumn7b_completion + 1).Value = "Nontraditional in this field"
+Worksheets(Sheet7bCompletion).Cells(1, LastColumn7b_completion + 1).ColumnWidth = 60
+
+LastColumn7b_completion = target_7bCompletion_ws.Cells(1, Columns.Count).End(xlToLeft).Column
+
+'calculation of overall 7b completion for college (does not remove duplicates)
+'checks if zero and if not formats result
+If completion_total = 0 Then
+    Worksheets(Sheet7bCompletion).Cells(LastRow7b_completion + 1, 3).Value = "N/A (no cases)"
+Else
+    
+    Worksheets(Sheet7bCompletion).Cells(LastRow7b_completion + 1, 3).Value = Format(completion_total, "#,###")
+
+End If
+
+Worksheets(Sheet7bCompletion).Cells(LastRow7b_completion + 1, 1).Value = "Overall (does not check for duplicates)"
+Worksheets(Sheet7bCompletion).Range(Worksheets(Sheet7bCompletion).Cells(LastRow7b_completion + 1, 1), Worksheets(Sheet7bCompletion).Cells(LastRow7b_completion + 1, 2)).Merge Across:=True
+
+
+'calculation of overall 7b Completion for each special population (does not remove duplicates)
+index = 1
+For sp = firstSP To lastSP
+
+    With Worksheets(FirstSheet)
+        
+        'numerator consists of ALL COMPLETERS IN THE S.P.
+        numerator = WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer_notenrolled, _
+                    .Range(.Cells(2, sp), .Cells(LastRow, sp)), 1) + _
+                    WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer, _
+                    .Range(.Cells(2, sp), .Cells(LastRow, sp)), 1)
+                        
+        'denominator consists of ALL concentrators (enrollment total)
+        denominator = completion_total
+
+    End With
+    
+    'checks divide by zero error and formats result
+    If denominator = 0 Then
+        Worksheets(Sheet7bCompletion).Cells(LastRow7b_completion + 1, 3 + index).Value = "N/A (no cases)"
+    Else
+        result = numerator / denominator
+
+        Worksheets(Sheet7bCompletion).Cells(LastRow7b_completion + 1, 3 + index).Value = FormatPercent(result, 2) & " (" & numerator & "/" & Format(denominator, "#,###") & ")"
+    End If
+
+    index = index + 1
+    
+Next sp
+
+
+'calculation of overall nontraditional gender completion rate for college (does not remove duplicates)
+'checks divide by zero error and formats result
+If denom_NTG_total = 0 Then
+    Worksheets(Sheet7bCompletion).Cells(LastRow7b_completion + 1, LastColumn7b_completion).Value = "N/A (no cases)"
+Else
+    overall_NTG_total = num_NTG_total / denom_NTG_total
+
+    Worksheets(Sheet7bCompletion).Cells(LastRow7b_completion + 1, LastColumn7b_completion).Value = FormatPercent(overall_NTG_total, 2) & " (" & num_NTG_total & "/" & Format(denom_NTG_total, "#,###") & ")" _
+        & " (Excludes programs with no nontrad. gender)"
+
+End If
+
+LastColumn7b_completion = target_7bCompletion_ws.Cells(1, Columns.Count).End(xlToLeft).Column
+LastRow7b_completion = target_7bCompletion_ws.Cells.Find("*", SearchOrder:=xlByRows, SearchDirection:=xlPrevious).Row
+
+'formats new table
+With Worksheets(Sheet7bCompletion)
+
+    .Range(.Cells(1, 1), .Cells(LastRow7b_completion, LastColumn7b_completion)).HorizontalAlignment = xlLeft
+    .Range(.Cells(1, 1), .Cells(LastRow7b_completion, LastColumn7b_completion)).Borders.LineStyle = xlContinuous
+    .Range(.Cells(1, 1), .Cells(LastRow7b_completion, LastColumn7b_completion)).BorderAround Weight:=xlThick
+    .Range(.Cells(2, 3), .Cells(LastRow7b_completion, 3)).HorizontalAlignment = xlRight
+
+End With
+'***7B COMPLETION TABLE END***
+
+
+Worksheets(Sheet2p1).Activate
+Worksheets(Sheet2p1).Range("A1").Select
+Application.CutCopyMode = False
+
+Application.ScreenUpdating = True
+
+
+End Sub
