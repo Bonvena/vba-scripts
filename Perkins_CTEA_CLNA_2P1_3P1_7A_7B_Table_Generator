@@ -372,13 +372,17 @@ For i = LBound(uniqueProgramArray) To UBound(uniqueProgramArray)
                     .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
                     .Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 4)
 
-            'denominator consists of ALL COMPLETERS in the program OR THOSE WHO DROPPED OUT (Other/Not Enrolled)
-            denominator = WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer_notenrolled, _
-                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i)) + _
-                    WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer, _
-                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i)) + _
+            'denominator consists of female/non-binary/unknown in the program COMPLETERS OR THOSE WHO DROPPED OUT (Other/Not Enrolled)
+            denominator = numerator + _
                     WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), other_notenrolled, _
-                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i))
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 2) + _
+                    WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), other_notenrolled, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 3) + _
+                    WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), other_notenrolled, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 4)
         
             'adds this to global variables for overall total nontrad. calculation later on
             num_NTG_total = num_NTG_total + numerator
@@ -407,13 +411,17 @@ For i = LBound(uniqueProgramArray) To UBound(uniqueProgramArray)
                     .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
                     .Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 4)
             
-            'denominator consists of ALL COMPLETERS in the program OR THOSE WHO DROPPED OUT (Other/Not Enrolled)
-            denominator = WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer_notenrolled, _
-                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i)) + _
-                    WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer, _
-                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i)) + _
+            'denominator consists of male/non-binary/unknown in the program COMPLETERS OR THOSE WHO DROPPED OUT (Other/Not Enrolled)
+            denominator = numerator + _
                     WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), other_notenrolled, _
-                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i))
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 1) + _
+                    WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), other_notenrolled, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 3) + _
+                    WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), other_notenrolled, _
+                    .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
+                    .Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 4)
             
             'adds this to global variables for overall total nontrad. calculation later on
             num_NTG_total = num_NTG_total + numerator
@@ -1230,7 +1238,7 @@ For i = LBound(uniqueProgramArray) To UBound(uniqueProgramArray)
                     .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i), _
                     .Range(.Cells(2, genderColumn), .Cells(LastRow, genderColumn)), 4)
             
-            'denominator consists of ALL COMPLETERS in the program (Other/Not Enrolled)
+            'denominator consists of ALL COMPLETERS in the program
             denominator = WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer_notenrolled, _
                         .Range(.Cells(2, programColumn), .Cells(LastRow, programColumn)), uniqueProgramArray(i)) + _
                         WorksheetFunction.CountIfs(.Range(.Cells(2, yrend_statColumn), .Cells(LastRow, yrend_statColumn)), completer, _
