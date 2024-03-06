@@ -11,6 +11,10 @@ You can run the script multiple times to quickly categorize a worksheet, such as
 
 This script will format CO, DA, or SE data queries for upload to National Student Clearinghouse's StudentTracker service. To avoid repetitive dialogue windows, you will have to adjust the first few lines of code to your particular institution. Original file must have first name, middle name, last name, YYYYMMDD birth date and student ID (Requester Return Field) in Columns A to E IN THAT ORDER, with institution-specific variable names/headings in the first row. (The code assumes the institution saves suffixes to the end of the last name field, not as its own separate field. If not, the suffix column would have to be merged afterwards).
 
-## Perkins_CTEA_CLNA_2P1_3P1_7A_7B_Table_Generator
+## Perkins_CTEA_CLNA_2P1_3P1_7B_Calculation
 
-This script will calculate and format certain tables required by the New York State Education Department for Perkins CLNA (Comprehensive Local Needs Assessment) for 2023-2024, namely tables 2p1 (Earned Recognized Postsecondary Credential), 3p1 (Non-Traditional Program Concentration), 7a (Enrollment), and 7b (Completion). It will also require the 2020 Nontraditional Occupations Crosswalk in Excel format, found here: https://cte.ed.gov/accountability/linking-data 
+This script will calculate and format certain tables required by the New York State Education Department for Perkins CLNA (Comprehensive Local Needs Assessment) for 2023-2024, namely tables 2p1 (Earned Recognized Postsecondary Credential), 3p1 (Non-Traditional Program Concentration), 7b--Enrollment, and 7b--Completion. It will provide the overall rates, the rates by CIP/IRP Codes, and the rates by each Perkins special population, including non-traditional gender. It will also require the 2020 Nontraditional Occupations Crosswalk in Excel format, found here: https://cte.ed.gov/accountability/linking-data 
+
+## Perkins_CTEA_CLNA_1P1_Calculation
+
+This script will calculate and format the 1p1 table as required by the New York State Education Department for Perkins CLNA (Comprehensive Local Needs Assessment) for 2023-2024. It will provide the overall rate, the rate by CIP/IRP Codes, and the rate by each Perkins special population, including non-traditional gender. It will require two files: the unedited B file corresponding to the A file on which the script is run (such as the 1A or 1B file) and the 2020 Nontraditional Occupations Crosswalk in Excel format, found here: https://cte.ed.gov/accountability/linking-data
