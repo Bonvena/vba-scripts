@@ -22,8 +22,9 @@ Set original_sht = ActiveSheet
 welcome = MsgBox(prompt:="This script will provide 1P1 metric per program and special population for the CLNA." _
             & vbCrLf & vbCrLf & "It is intended to work on the CTEA files formatted for the IDEx system." _
             & vbCrLf & "The CTEA A file (1 OR 2) should be the only Excel workbook open." _
-            & " You should also have saved the 2020 Nontraditional Crosswalk where it can be located as well as the CTEA B file. " _
-            & " As this file will be modified, you may wish to save a copy first before continuing. Otherwise, click OK" _
+            & vbCrLf & "You must also run this as a Module (Insert -> Module in the VBA Editor)." _
+            & vbCrLf & vbCrLf & "You should also have saved the 2020 Nontraditional Crosswalk where it can be located as well as the CTEA B file. " _
+            & " As this file will be modified, you may wish to save a copy first before continuing. Otherwise, click OK." _
             , Title:="CTEA CLNA Calculation", Buttons:=vbOKCancel)
 
 If welcome = vbCancel Then
