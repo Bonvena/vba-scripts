@@ -1,22 +1,36 @@
 ' ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 ' // NSC StudentTracker Formatting Macro
 ' //
-' // For formatting files for National Student Clearinghouse's StudentTracker service. 
-' // This script will format CO, DA, or SE data queries for upload to National Student Clearinghouse's StudentTracker service. 
-' // To avoid repetitive dialogue windows, you will have to adjust the first few lines of code to your particular institution. 
-' // Original file must have first name, middle name, last name, YYYYMMDD birth date and student ID (Requester Return Field) in Columns A to E IN THAT ORDER, 
-' // with institution-specific variable names/headings in the first row. 
-' // (The code assumes the institution saves suffixes to the end of the last name field, not as its own separate field. 
+' // For formatting files for National Student Clearinghouse's StudentTracker service.
+' // This script will format CO, DA, or SE data queries for upload to National Student Clearinghouse's StudentTracker service.
+' // To avoid repetitive dialogue windows, you will have to adjust the first few lines of code to your particular institution.
+' // Original file must have first name, middle name, last name, YYYYMMDD birth date and student ID (Requester Return Field) in Columns A to E IN THAT ORDER,
+' // with institution-specific variable names/headings in the first row.
+' // (The code assumes the institution saves suffixes to the end of the last name field, not as its own separate field.
 ' // If not, the suffix column would have to be merged afterwards).
 ' ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 Option Explicit
+
 Sub NSC_FORMATTING()
 
-Dim aFill, searchDate, creationDate, welcome As Long
-Dim inputQuestion, todayDate, schoolName, schoolCode, branchCode, queryOption As String
-Dim rng, cell As Range
-Dim numberCount, wrongDateCount As Integer
+Dim aFill As Long
+Dim searchDate As Long
+Dim creationDate As Long
+Dim welcome As VbMsgBoxResult
+Dim inputQuestion As String
+Dim todayDate As String
+Dim schoolName As String
+Dim schoolCode As String
+Dim branchCode As String
+Dim queryOption As String
+Dim rng As Range
+Dim cell As Range
+Dim numberCount As Integer
+Dim wrongDateCount As Integer
+
+Application.ScreenUpdating = False
+Application.Calculation = xlCalculationManual
 
 'CHANGE THESE LINES TO MATCH YOUR INSTITUTION.
 schoolName = "ABC UNIVERSITY"
@@ -247,4 +261,8 @@ If numberCount > 0 Then
     Destination1.Value = numberArray
 End If
 
+Application.Calculation = xlCalculationAutomatic
+Application.ScreenUpdating = True
+
 End Sub
+
