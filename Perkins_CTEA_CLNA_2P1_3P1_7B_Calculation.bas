@@ -184,7 +184,18 @@ Ws.AutoFilter.Sort.SortFields.Add Order:=xlAscending, _
 Ws.AutoFilter.Sort.Apply
 
 'create array of unique IRP codes
-uniqueProgramArray = Application.Transpose(Ws.Range("A2:A" & LastRow))
+
+' *** FIX FOR SINGLE PROGRAM ***
+' Range is A2:A2. Transpose returns a single string value, not an array.
+' We manually put the single value into a 1-D array of size 1.
+If LastRow = 2 Then
+    ReDim uniqueProgramArray(1 To 1)
+    uniqueProgramArray(1) = Ws.Range("A2").Value
+' Multiple programs (LastRow > 2). Transpose works correctly, resulting in a 1-D array (starting at index 1).
+Else
+    uniqueProgramArray = Application.Transpose(Ws.Range("A2:A" & LastRow))
+
+End If
 
 'turn off AutoFilter
 ActiveSheet.AutoFilterMode = False
@@ -1361,6 +1372,5 @@ Worksheets(Sheet2p1).Range("A1").Select
 Application.CutCopyMode = False
 
 Application.ScreenUpdating = True
-
 
 End Sub
