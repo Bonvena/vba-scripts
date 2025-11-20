@@ -29,9 +29,6 @@ Dim cell As Range
 Dim numberCount As Integer
 Dim wrongDateCount As Integer
 
-Application.ScreenUpdating = False
-Application.Calculation = xlCalculationManual
-
 'CHANGE THESE LINES TO MATCH YOUR INSTITUTION.
 schoolName = "ABC UNIVERSITY"
 schoolCode = "000000"
@@ -260,9 +257,6 @@ If numberCount > 0 Then
     Set Destination1 = Destination1.Resize(1, UBound(numberArray) + 1)
     Destination1.Value = numberArray
 End If
-
-Application.Calculation = xlCalculationAutomatic
-Application.ScreenUpdating = True
 
 End Sub
 
