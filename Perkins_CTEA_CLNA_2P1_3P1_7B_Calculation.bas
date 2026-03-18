@@ -788,10 +788,10 @@ Else
     overall_total = num_total / denom_total
 
     If overall_total >= target_3p1 Then
-        Worksheets(Sheet3p1).Cells(LastRow3p1 + 1, 3).Value = FormatPercent(overall_total, 2) & " (" & num_total & "/" & Format(denom_total, "#,###") & ")" & " (Above Target of " & Format(target_2p1, "0.00%") & ")"
+        Worksheets(Sheet3p1).Cells(LastRow3p1 + 1, 3).Value = FormatPercent(overall_total, 2) & " (" & num_total & "/" & Format(denom_total, "#,###") & ")" & " (Above Target of " & Format(target_3p1, "0.00%") & ")"
         Worksheets(Sheet3p1).Cells(LastRow3p1 + 1, 3).Font.Color = RGB(0, 110, 0)
     Else
-        Worksheets(Sheet3p1).Cells(LastRow3p1 + 1, 3).Value = FormatPercent(overall_total, 2) & " (" & num_total & "/" & Format(denom_total, "#,###") & ")" & " (Below Target of " & Format(target_2p1, "0.00%") & ")"
+        Worksheets(Sheet3p1).Cells(LastRow3p1 + 1, 3).Value = FormatPercent(overall_total, 2) & " (" & num_total & "/" & Format(denom_total, "#,###") & ")" & " (Below Target of " & Format(target_3p1, "0.00%") & ")"
         Worksheets(Sheet3p1).Cells(LastRow3p1 + 1, 3).Font.Color = RGB(230, 0, 0)
     End If
 
